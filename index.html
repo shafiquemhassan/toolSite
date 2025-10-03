@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pigeon Racing — Total Flying Time Calculator</title>
+
+  <!-- jsPDF (for PDF generation) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600&display=swap" rel="stylesheet">
+
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 18px;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 18px;
+      color: #2c3e50;
+    }
+    fieldset.card {
+      border: none;
+      background: #fff;
+      padding: 18px;
+      margin-bottom: 18px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    legend {
+      font-weight: 600;
+      color: #2980b9;
+      margin-bottom: 10px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+    label { display:block; font-size: 14px; margin-bottom:6px; color:#555; }
+    input[type="text"], input[type="date"], input[type="time"] {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #d0d7de;
+      box-sizing: border-box;
+    }
+    .actions {
+      display:flex;
+      gap: 10px;
+      flex-wrap:wrap;
+      margin-top: 10px;
+    }
+    button {
+      background: #2980b9;
+      color: white;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform .08s, background .15s;
+      font-weight: 600;
+    }
+    button:hover { transform: translateY(-2px); background:#1f6a9a; }
+    .small-btn {
+      padding: 6px 10px;
+      font-weight: 500;
+      border-radius: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    table th, table td {
+      border: 1px solid #e6e9ed;
+      padding: 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    table th { background:#f2f6fa; color:#333; font-weight:600; }
+    .results {
+      background: #fff;
+      padding: 14px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      margin-top: 14px;
+    }
+    .results h3 { margin:0 0 8px 0; color:#16a085; }
+    .muted { color:#666; font-size:13px; }
+    .right { text-align: right; }
+    @media (max-width:700px) {
+      .grid { grid-template-columns: 1fr; }
+      label { font-size:13px; }
+      button { width:100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Pigeon Racing — Total Flying Time Calculator</h2>
+
+    <fieldset class="card">
+      <legend>Player Details</legend>
+      <div class="grid">
+        <div>
+          <label for="playerName">Name</label>
+          <input id="playerName" type="text" placeholder="Player name">
+        </div>
+        <div>
+          <label for="raceDate">Date</label>
+          <input id="raceDate" type="date">
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="playerAddress">Address</label>
+          <input id="playerAddress" type="text" placeholder="Address / location">
+        </div>
+
+        <div>
+          <label>Timeslot — Start</label>
+          <input id="startTime" type="time" value="">
+        </div>
+        <div>
+          <label>Timeslot — End</label>
+          <input id="endTime" type="time" value="">
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="card">
+      <legend>Pigeon Records</legend>
+
+      <div class="actions" style="margin-bottom:10px;">
+        <button id="addPigeonBtn" class="small-btn">+ Add Pigeon</button>
+        <div class="muted" style="align-self:center;">Add as many pigeon rows as needed. Use remove to delete a row.</div>
+      </div>
+
+      <table id="pigeonTable" aria-label="pigeon table">
+        <thead>
+          <tr>
+            <th style="width:55%;">Pigeon Name</th>
+            <th style="width:30%;">Arrival Time</th>
+            <th style="width:15%;" class="right">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- rows inserted here -->
+        </tbody>
+      </table>
+    </fieldset>
+
+    <div class="actions">
+      <button id="calculateBtn">Calculate Total</button>
+      <button id="generatePdfBtn">Generate PDF</button>
+    </div>
+
+    <div id="results" class="results" style="display:none;"></div>
+  </div>
+
+  <script>
+    // ---------- Helpers ----------
+    function parseTimeToMinutes(t) {
+      // expects "HH:MM" (24-hour). returns minutes from 00:00 or null if invalid
+      if (!t || typeof t !== 'string') return null;
+      const parts = t.split(':');
+      if (parts.length !== 2) return null;
+      const hh = parseInt(parts[0], 10);
+      const mm = parseInt(parts[1], 10);
+      if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+      return hh * 60 + mm;
+    }
+
+    function timeDiffInMinutes(start, end) {
+      // returns difference end - start in minutes.
+      const s = parseTimeToMinutes(start);
+      const e = parseTimeToMinutes(end);
+      if (s === null || e === null) return null;
+      let diff = e - s;
+      // if negative, assume next day (add 24h)
+      if (diff < 0) diff += 24 * 60;
+      return diff;
+    }
+
+    function formatTime(minutes) {
+      if (minutes == null || Number.isNaN(minutes)) return 'N/A';
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${h}h ${m}m`;
+    }
+
+    // ---------- DOM Elements ----------
+    const addPigeonBtn = document.getElementById('addPigeonBtn');
+    const tableBody = document.querySelector('#pigeonTable tbody');
+    const calculateBtn = document.getElementById('calculateBtn');
+    const generatePdfBtn = document.getElementById('generatePdfBtn');
+    const resultsDiv = document.getElementById('results');
+
+    // Store last calculation for PDF
+    let lastResults = null;
+
+    // ---------- Add Row ----------
+    addPigeonBtn.addEventListener('click', () => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="pigeonName" placeholder="Pigeon name"></td>
+        <td><input type="time" class="arrivalTime"></td>
+        <td class="right"><button class="removeRow small-btn" type="button">Remove</button></td>
+      `;
+      tableBody.appendChild(tr);
+    });
+
+    // ---------- Remove Row (delegation) ----------
+    document.querySelector('#pigeonTable').addEventListener('click', (e) => {
+      if (e.target && e.target.classList.contains('removeRow')) {
+        const row = e.target.closest('tr');
+        if (row) row.remove();
+      }
+    });
+
+    // ---------- Calculate Total ----------
+    calculateBtn.addEventListener('click', () => {
+      const startTime = document.getElementById('startTime').value;
+      if (!startTime) {
+        alert('Please enter the start time (timeslot).');
+        return;
+      }
+
+      const rows = Array.from(document.querySelectorAll('#pigeonTable tbody tr'));
+      if (rows.length === 0) {
+        alert('Please add at least one pigeon row.');
+        return;
+      }
+
+      let totalMinutes = 0;
+      const pigeonResults = []; // {name, arrival, diff}
+
+      rows.forEach((row, idx) => {
+        const nameInput = row.querySelector('.pigeonName');
+        const arrivalInput = row.querySelector('.arrivalTime');
+        const name = nameInput ? (nameInput.value.trim() || `Pigeon ${idx + 1}`) : `Pigeon ${idx + 1}`;
+        const arrival = arrivalInput ? arrivalInput.value : '';
+
+        if (arrival) {
+          const diff = timeDiffInMinutes(startTime, arrival);
+          if (diff === null) {
+            // skip invalid entry
+            pigeonResults.push({ name, arrival: arrival || 'N/A', diff: null });
+          } else {
+            totalMinutes += diff;
+            pigeonResults.push({ name, arrival, diff });
+          }
+        } else {
+          // no arrival given -> show as N/A
+          pigeonResults.push({ name, arrival: 'N/A', diff: null });
+        }
+      });
+
+      // prepare results display
+      let html = '<h3>Pigeon Flying Times</h3><ul>';
+      pigeonResults.forEach(p => {
+        if (p.diff === null) {
+          html += `<li>${p.name} → <span class="muted">No valid arrival time</span></li>`;
+        } else {
+          html += `<li>${p.name} → ${formatTime(p.diff)}</li>`;
+        }
+      });
+      html += '</ul>';
+
+      // total
+      const totalH = Math.floor(totalMinutes / 60);
+      const totalM = totalMinutes % 60;
+      html += `<p><strong>Total Flying Time of all pigeons: ${totalH}h ${totalM}m</strong></p>`;
+
+      // show timeslot and player details small
+      const playerName = document.getElementById('playerName').value || 'N/A';
+      const playerAddress = document.getElementById('playerAddress').value || 'N/A';
+      const raceDate = document.getElementById('raceDate').value || 'N/A';
+      const endTime = document.getElementById('endTime').value || 'N/A';
+
+      html += `<p class="muted">Player: ${playerName} · Address: ${playerAddress} · Date: ${raceDate} · Timeslot: ${startTime} - ${endTime}</p>`;
+
+      resultsDiv.style.display = 'block';
+      resultsDiv.innerHTML = html;
+
+      // save last results for PDF generation
+      lastResults = {
+        totalMinutes,
+        totalFormatted: `${totalH}h ${totalM}m`,
+        pigeonResults,
+        player: { name: playerName, address: playerAddress, date: raceDate },
+        timeslot: { start: startTime, end: endTime }
+      };
+    });
+
+    // ---------- Generate PDF ----------
+    generatePdfBtn.addEventListener('click', () => {
+      if (!lastResults) {
+        alert('Please calculate the total flying time first (click "Calculate Total").');
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+
+      const marginLeft = 40;
+      let y = 40;
+
+      doc.setFontSize(16);
+      doc.text('Pigeon Racing — Total Flying Time Report', marginLeft, y);
+      y += 24;
+
+      doc.setFontSize(11);
+      doc.text(`Player: ${lastResults.player.name}`, marginLeft, y);
+      y += 16;
+      doc.text(`Address: ${lastResults.player.address}`, marginLeft, y);
+      y += 16;
+      doc.text(`Date: ${lastResults.player.date}`, marginLeft, y);
+      y += 16;
+      doc.text(`Timeslot: ${lastResults.timeslot.start} - ${lastResults.timeslot.end}`, marginLeft, y);
+      y += 22;
+
+      doc.setFontSize(12);
+      doc.text('Pigeon Flying Times:', marginLeft, y);
+      y += 16;
+
+      doc.setFontSize(11);
+      lastResults.pigeonResults.forEach((p, idx) => {
+        // if page nearly full, add new page
+        if (y > 740) {
+          doc.addPage();
+          y = 40;
+        }
+        const diffText = p.diff === null ? 'No valid arrival time' : formatTime(p.diff);
+        doc.text(`${idx + 1}. ${p.name} (${p.arrival}) → ${diffText}`, marginLeft + 8, y);
+        y += 14;
+      });
+
+      y += 12;
+      doc.setFontSize(12);
+      doc.text(`Total Flying Time (all pigeons): ${lastResults.totalFormatted}`, marginLeft, y);
+      y += 28;
+
+      doc.setFontSize(10);
+      doc.setTextColor(120);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, marginLeft, y);
+
+      doc.save('pigeon_racing_total_report.pdf');
+    });
+  </script>
+</body>
+</html>
